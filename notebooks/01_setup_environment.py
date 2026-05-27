@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import settings
-from pyspark.sql import SparkSession
+from src.spark_session import get_spark_session
 
 # ---------------------------------------------------------------------------
 # Create directory structure
@@ -22,14 +22,7 @@ for path in [settings.BRONZE_PATH, settings.SILVER_PATH, settings.GOLD_DIR, sett
 # ---------------------------------------------------------------------------
 # Verify SparkSession with Delta Lake
 # ---------------------------------------------------------------------------
-spark = (
-    SparkSession.builder.appName("RedditLakehouse")
-    .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.2.1")
-    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-    .master("local[*]")
-    .getOrCreate()
-)
+spark = get_spark_session("RedditLakehouse-Setup")
 
 print(f"\nSpark version: {spark.version}")
 print(f"Delta Lake enabled: {spark.conf.get('spark.sql.extensions')}")

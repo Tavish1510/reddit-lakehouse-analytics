@@ -10,21 +10,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import settings
-from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
+
+from src.spark_session import get_spark_session
 
 # ---------------------------------------------------------------------------
 # SparkSession
 # ---------------------------------------------------------------------------
-spark = (
-    SparkSession.builder.appName("RedditLakehouse-Silver")
-    .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.2.1")
-    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-    .master("local[*]")
-    .getOrCreate()
-)
+spark = get_spark_session("RedditLakehouse-Silver")
 
 # ---------------------------------------------------------------------------
 # Read Bronze

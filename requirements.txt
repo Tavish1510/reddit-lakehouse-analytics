@@ -1,7 +1,7 @@
 pyspark==3.5.3
 delta-spark==3.2.1
-sentence-transformers==3.4.1
-chromadb==0.6.3
-streamlit==1.41.1
-requests==2.32.3
-pandas==2.2.3
+sentence-transformers>=3.4.1
+chromadb>=1.0.0
+streamlit>=1.41.1
+requests>=2.32.3
+pandas>=2.2.3

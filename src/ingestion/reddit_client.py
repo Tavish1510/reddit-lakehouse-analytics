@@ -51,8 +51,20 @@ def fetch_subreddit_posts(subreddit: str, sort: str = "hot", limit: int = settin
         if after:
             params["after"] = after
 
-        response = requests.get(url, headers=HEADERS, params=params, timeout=15)
-        response.raise_for_status()
+        for attempt in range(5):
+            response = requests.get(url, headers=HEADERS, params=params, timeout=15)
+            if response.status_code == 200:
+                break
+            if response.status_code == 429:
+                wait = 2 ** (attempt + 3)
+                print(f"  rate-limited, waiting {wait}s...")
+                time.sleep(wait)
+                continue
+            response.raise_for_status()
+        else:
+            print(f"  ERROR: rate-limited after retries, skipping {subreddit}")
+            return posts
+
         data = response.json()
 
         children = data.get("data", {}).get("children", [])
@@ -87,7 +99,7 @@ def fetch_subreddit_posts(subreddit: str, sort: str = "hot", limit: int = settin
         if not after:
             break
 
-        time.sleep(1.5)
+        time.sleep(3)
 
     return posts
 
@@ -102,7 +114,7 @@ def fetch_all_subreddits() -> list[dict]:
             print(f"  -> {len(posts)} posts")
         except Exception as e:
             print(f"  -> ERROR: {e}")
-        time.sleep(2)
+        time.sleep(4)
     print(f"\nTotal posts fetched: {len(all_posts)}")
     return all_posts
 

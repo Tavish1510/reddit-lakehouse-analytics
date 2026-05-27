@@ -72,16 +72,48 @@ reddit-lakehouse-analytics/
 
 ### Prerequisites
 - Python 3.10+
-- Java 11+ (required by PySpark — [download](https://adoptium.net/))
+- Java 11 or 17 (required by PySpark — [download OpenJDK](https://adoptium.net/))
+- **Windows only:** `winutils.exe` + `hadoop.dll` for Hadoop on Windows
 
-### Install & Run
+### Setup (Windows)
 
-```bash
+```powershell
+# 1. Install Java (OpenJDK 17) and set JAVA_HOME
+winget install Microsoft.OpenJDK.17
+[Environment]::SetEnvironmentVariable("JAVA_HOME", "C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot", "User")
+
+# 2. Set up winutils (Hadoop on Windows)
+New-Item -ItemType Directory -Path "C:\hadoop\bin" -Force
+$base = "https://github.com/cdarlint/winutils/raw/master/hadoop-3.3.6/bin"
+Invoke-WebRequest "$base/winutils.exe" -OutFile "C:\hadoop\bin\winutils.exe"
+Invoke-WebRequest "$base/hadoop.dll" -OutFile "C:\hadoop\bin\hadoop.dll"
+[Environment]::SetEnvironmentVariable("HADOOP_HOME", "C:\hadoop", "User")
+
+# 3. Close & reopen PowerShell so the env vars take effect
+
+# 4. Clone and set up the project
 git clone https://github.com/Tavish1510/reddit-lakehouse-analytics.git
 cd reddit-lakehouse-analytics
-
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+```
 
+### Setup (Mac/Linux)
+
+```bash
+# Install Java via your package manager (e.g., brew install openjdk@17)
+
+git clone https://github.com/Tavish1510/reddit-lakehouse-analytics.git
+cd reddit-lakehouse-analytics
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Run
+
+```bash
 # Run the full pipeline (ingestion → transformations → aggregations → embeddings)
 python notebooks/06_run_full_pipeline.py
 
