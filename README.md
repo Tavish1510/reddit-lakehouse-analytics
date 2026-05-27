@@ -1,5 +1,7 @@
 # Reddit Lakehouse Analytics & Semantic Search Platform
 
+https://reddit-lakehouse-analytics-kjcdrfnrdfvxkwe3tsqvu5.streamlit.app/
+
 An end-to-end data pipeline using **PySpark** and **Delta Lake** that ingests Reddit posts from 16 subreddits, transforms them through a **Bronze/Silver/Gold medallion architecture**, and powers a **semantic search** system using Sentence-Transformers embeddings and ChromaDB.
 
 **Fully free and local** — no cloud accounts, no API keys, no costs.
