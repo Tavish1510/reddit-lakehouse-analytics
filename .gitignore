@@ -9,4 +9,13 @@ build/
 .ipynb_checkpoints/
 .DS_Store
 *.log
-data/
+out.txt
+
+# Bronze/Silver/Gold Delta tables — too large for git, rebuild via pipeline
+data/bronze/
+data/silver/
+data/gold/
+data/_staging/
+
+# ChromaDB vector store — committed so Streamlit Cloud deployment has data
+# (delete data/chroma_db/ from .gitignore if you want to rebuild from scratch)

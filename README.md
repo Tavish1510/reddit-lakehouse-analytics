@@ -142,6 +142,20 @@ python notebooks/05_embedding_generation.py # ~2 min (first run downloads model)
 | `top_posts` | Top 50 posts per subreddit by score |
 | `author_activity` | Per-author posting stats by subreddit |
 
+## Deploy to Streamlit Community Cloud
+
+The Streamlit app can be deployed for free at [share.streamlit.io](https://share.streamlit.io):
+
+1. Push this repo to GitHub
+2. Sign in to Streamlit Community Cloud with your GitHub account
+3. Click **"New app"** → select the `reddit-lakehouse-analytics` repo
+4. Set:
+   - **Main file path:** `streamlit_app/app.py`
+   - **Requirements file:** `streamlit_app/requirements.txt` (lightweight, no PySpark)
+5. Click **Deploy**
+
+The `data/chroma_db/` directory is committed to the repo so the deployed app has the pre-built semantic index. To refresh with new posts, rerun the pipeline locally and commit the updated `data/chroma_db/`.
+
 ## Technologies
 
 | Layer | Technology |
