@@ -1,124 +1,68 @@
-# Databricks notebook source
-# MAGIC %md
-# MAGIC # 05 — Embedding Generation
-# MAGIC Generates OpenAI embeddings for Reddit post content (title + selftext)
-# MAGIC and stores them in the Gold layer for vector search.
-# MAGIC
-# MAGIC **Prerequisites:**
-# MAGIC ```
-# MAGIC databricks secrets put-secret reddit-api openai-key --string-value "YOUR_OPENAI_KEY"
-# MAGIC ```
+"""
+05 — Embedding Generation
+Generates embeddings for Reddit post content using the free
+HuggingFace Sentence-Transformers model (all-MiniLM-L6-v2)
+and stores them in a ChromaDB vector database.
+No API keys required.
+"""
 
-# COMMAND ----------
+import sys
+from pathlib import Path
 
-# MAGIC %pip install openai
-# MAGIC %restart_python
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# COMMAND ----------
-
-import time
-
-from openai import OpenAI
+from config import settings
+from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import ArrayType, FloatType, StringType, StructField, StructType
-
-# COMMAND ----------
-
-OPENAI_API_KEY = dbutils.secrets.get("reddit-api", "openai-key")
-EMBEDDING_MODEL = "text-embedding-3-small"
-BATCH_SIZE = 100
-
-CATALOG = "reddit_analytics"
-SILVER_TABLE = f"{CATALOG}.silver.cleaned_posts"
-EMBEDDING_TABLE = f"{CATALOG}.gold.post_embeddings"
-
-spark.sql(f"USE CATALOG {CATALOG}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Select Posts for Embedding
-# MAGIC Use the top posts from each subreddit to keep API costs manageable.
-
-# COMMAND ----------
-
 from pyspark.sql.window import Window
 
-window = Window.partitionBy("subreddit").orderBy(F.col("score").desc())
+from src.embeddings.generator import build_vector_store
 
-posts_to_embed = (
-    spark.read.table("silver.cleaned_posts")
-    .withColumn("rank", F.row_number().over(window))
-    .filter(F.col("rank") <= 100)
-    .select("post_id", "subreddit", "title", "content")
-    .drop("rank")
+# ---------------------------------------------------------------------------
+# SparkSession
+# ---------------------------------------------------------------------------
+spark = (
+    SparkSession.builder.appName("RedditLakehouse-Embeddings")
+    .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.2.1")
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+    .master("local[*]")
+    .getOrCreate()
 )
 
-post_count = posts_to_embed.count()
-print(f"Posts to embed: {post_count}")
+# ---------------------------------------------------------------------------
+# Select top posts per subreddit for embedding
+# ---------------------------------------------------------------------------
+print("=" * 60)
+print("EMBEDDING GENERATION — Sentence-Transformers (free, local)")
+print("=" * 60)
 
-# COMMAND ----------
+silver_df = spark.read.format("delta").load(settings.SILVER_PATH)
 
-# MAGIC %md
-# MAGIC ## Generate Embeddings
+window = Window.partitionBy("subreddit").orderBy(F.col("score").desc())
+posts_to_embed = (
+    silver_df.withColumn("rank", F.row_number().over(window))
+    .filter(F.col("rank") <= 100)
+    .select("post_id", "subreddit", "title", "content")
+)
 
-# COMMAND ----------
+print(f"Posts to embed: {posts_to_embed.count()}")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-rows = posts_to_embed.collect()
+# ---------------------------------------------------------------------------
+# Build ChromaDB vector store
+# ---------------------------------------------------------------------------
+Path(settings.CHROMA_PATH).mkdir(parents=True, exist_ok=True)
+collection = build_vector_store(posts_to_embed)
 
-embedded_rows = []
-for i in range(0, len(rows), BATCH_SIZE):
-    batch = rows[i:i + BATCH_SIZE]
-    texts = [row["content"][:8000] for row in batch]
+# ---------------------------------------------------------------------------
+# Test query
+# ---------------------------------------------------------------------------
+print("\n--- Test Query ---")
+from src.embeddings.generator import search
 
-    response = client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
-    embeddings = [item.embedding for item in response.data]
+results = search("What are the best programming languages to learn?", n_results=5)
+for i, r in enumerate(results, 1):
+    print(f"  {i}. [r/{r['subreddit']}] {r['title']}")
+    print(f"     distance: {r['distance']:.4f}")
 
-    for row, embedding in zip(batch, embeddings):
-        embedded_rows.append({
-            "post_id": row["post_id"],
-            "subreddit": row["subreddit"],
-            "title": row["title"],
-            "content": row["content"],
-            "embedding": embedding,
-        })
-
-    print(f"Embedded {min(i + BATCH_SIZE, len(rows))}/{len(rows)}")
-    if i + BATCH_SIZE < len(rows):
-        time.sleep(0.5)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Write Embeddings to Gold
-
-# COMMAND ----------
-
-schema = StructType([
-    StructField("post_id", StringType(), False),
-    StructField("subreddit", StringType(), False),
-    StructField("title", StringType(), False),
-    StructField("content", StringType(), False),
-    StructField("embedding", ArrayType(FloatType()), False),
-])
-
-embeddings_df = spark.createDataFrame(embedded_rows, schema=schema)
-embeddings_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable("gold.post_embeddings")
-
-print(f"Wrote {embeddings_df.count()} embeddings to {EMBEDDING_TABLE}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Validate
-
-# COMMAND ----------
-
-display(spark.sql(f"""
-    SELECT subreddit, COUNT(*) as embedded_posts,
-           SIZE(embedding) as embedding_dim
-    FROM {EMBEDDING_TABLE}
-    GROUP BY subreddit
-    ORDER BY embedded_posts DESC
-"""))
+spark.stop()

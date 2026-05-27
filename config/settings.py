@@ -1,46 +1,37 @@
 import os
-from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
 
+BRONZE_PATH = str(DATA_DIR / "bronze" / "raw_posts")
+SILVER_PATH = str(DATA_DIR / "silver" / "cleaned_posts")
+GOLD_DIR = str(DATA_DIR / "gold")
+CHROMA_PATH = str(DATA_DIR / "chroma_db")
 
-class Settings:
-    REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
-    REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-    REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "RedditLakehouse/1.0")
+REDDIT_USER_AGENT = "RedditLakehouse/1.0 (educational project)"
+REDDIT_BASE_URL = "https://www.reddit.com/r/{subreddit}/{sort}.json"
 
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    EMBEDDING_MODEL = "text-embedding-3-small"
-    EMBEDDING_DIMENSION = 1536
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+EMBEDDING_DIMENSION = 384
 
-    DATABRICKS_HOST = os.getenv("DATABRICKS_HOST")
-    DATABRICKS_TOKEN = os.getenv("DATABRICKS_TOKEN")
+SUBREDDITS = [
+    "technology",
+    "programming",
+    "MachineLearning",
+    "datascience",
+    "wallstreetbets",
+    "personalfinance",
+    "investing",
+    "science",
+    "space",
+    "worldnews",
+    "news",
+    "AskReddit",
+    "explainlikeimfive",
+    "fitness",
+    "cooking",
+    "travel",
+]
 
-    CATALOG = "reddit_analytics"
-    SCHEMA_BRONZE = "bronze"
-    SCHEMA_SILVER = "silver"
-    SCHEMA_GOLD = "gold"
-
-    VECTOR_SEARCH_ENDPOINT = "reddit_vs_endpoint"
-    VECTOR_SEARCH_INDEX = f"{CATALOG}.gold.post_embeddings_index"
-
-    SUBREDDITS = [
-        "technology",
-        "programming",
-        "MachineLearning",
-        "datascience",
-        "wallstreetbets",
-        "personalfinance",
-        "investing",
-        "science",
-        "space",
-        "worldnews",
-        "news",
-        "AskReddit",
-        "explainlikeimfive",
-        "fitness",
-        "cooking",
-        "travel",
-    ]
-
-    POSTS_PER_SUBREDDIT = 500
+POSTS_PER_SUBREDDIT = 500

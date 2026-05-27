@@ -1,73 +1,47 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import streamlit as st
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
 from search_client import SemanticSearchClient
+from config import settings
 
-st.set_page_config(
-    page_title="Reddit Lakehouse Q&A",
-    page_icon="🔍",
-    layout="wide",
-)
+st.set_page_config(page_title="Reddit Lakehouse Q&A", page_icon="🔍", layout="wide")
 
 st.title("Reddit Lakehouse Q&A")
-st.caption("Semantic search over Reddit posts using RAG (Retrieval-Augmented Generation)")
+st.caption("Semantic search over Reddit posts using local embeddings (Sentence-Transformers + ChromaDB)")
 
 
 @st.cache_resource
 def get_client():
-    return SemanticSearchClient(
-        databricks_host=os.getenv("DATABRICKS_HOST"),
-        databricks_token=os.getenv("DATABRICKS_TOKEN"),
-        openai_api_key=os.getenv("OPENAI_API_KEY"),
-    )
+    return SemanticSearchClient()
 
 
 client = get_client()
 
-SUBREDDITS = [
-    "All",
-    "technology", "programming", "MachineLearning", "datascience",
-    "wallstreetbets", "personalfinance", "investing",
-    "science", "space",
-    "worldnews", "news",
-    "AskReddit", "explainlikeimfive",
-    "fitness", "cooking", "travel",
-]
+SUBREDDITS = ["All"] + settings.SUBREDDITS
 
 with st.sidebar:
     st.header("Settings")
-    mode = st.radio("Mode", ["Q&A (AI Answer)", "Search Only"])
     subreddit_filter = st.selectbox("Filter by Subreddit", SUBREDDITS)
     num_results = st.slider("Number of results", 3, 20, 5)
 
-query = st.text_input("Ask a question or search Reddit posts:", placeholder="e.g., What do people think about learning Python in 2025?")
+query = st.text_input(
+    "Search Reddit posts:",
+    placeholder="e.g., What do people think about learning Python in 2025?",
+)
 
 if query:
-    filters = None
-    if subreddit_filter != "All":
-        filters = {"subreddit": subreddit_filter}
+    sub_filter = None if subreddit_filter == "All" else subreddit_filter
 
     with st.spinner("Searching..."):
-        if mode == "Q&A (AI Answer)":
-            result = client.answer_question(query, num_results=num_results)
+        results = client.search(query, n_results=num_results, subreddit_filter=sub_filter)
 
-            st.subheader("Answer")
-            st.markdown(result["answer"])
+    st.subheader(f"{len(results)} Results")
 
-            st.subheader("Sources")
-            for i, source in enumerate(result["sources"], 1):
-                with st.expander(f"{i}. [r/{source['subreddit']}] {source['title']}"):
-                    st.markdown(f"**Similarity Score:** {source['similarity_score']:.4f}")
-                    st.markdown(source["content"][:1000])
-                    st.markdown(f"[View on Reddit](https://reddit.com/comments/{source['post_id']})")
-        else:
-            results = client.search(query, num_results=num_results, filters=filters)
-
-            st.subheader(f"{len(results)} Results")
-            for i, post in enumerate(results, 1):
-                with st.expander(f"{i}. [r/{post['subreddit']}] {post['title']} (score: {post['similarity_score']:.4f})"):
-                    st.markdown(post["content"][:1000])
-                    st.markdown(f"[View on Reddit](https://reddit.com/comments/{post['post_id']})")
+    for i, post in enumerate(results, 1):
+        similarity_pct = post["similarity"] * 100
+        with st.expander(f"{i}. [r/{post['subreddit']}] {post['title']} — {similarity_pct:.1f}% match"):
+            st.markdown(post["content"][:1500])
+            st.markdown(f"[View on Reddit](https://reddit.com/comments/{post['post_id']})")

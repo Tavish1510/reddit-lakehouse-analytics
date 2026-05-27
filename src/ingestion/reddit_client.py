@@ -1,19 +1,18 @@
+import time
 from datetime import datetime, timezone
 
-import praw
+import requests
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
-    ArrayType,
     FloatType,
     IntegerType,
-    LongType,
     StringType,
     StructField,
     StructType,
     TimestampType,
 )
 
-from config.settings import Settings
+from config import settings
 
 POST_SCHEMA = StructType(
     [
@@ -37,57 +36,79 @@ POST_SCHEMA = StructType(
     ]
 )
 
+HEADERS = {"User-Agent": settings.REDDIT_USER_AGENT}
 
-class RedditClient:
-    def __init__(self):
-        self.reddit = praw.Reddit(
-            client_id=Settings.REDDIT_CLIENT_ID,
-            client_secret=Settings.REDDIT_CLIENT_SECRET,
-            user_agent=Settings.REDDIT_USER_AGENT,
-        )
 
-    def fetch_posts(self, subreddit_name: str, limit: int = Settings.POSTS_PER_SUBREDDIT) -> list[dict]:
-        subreddit = self.reddit.subreddit(subreddit_name)
-        posts = []
-        now = datetime.now(timezone.utc)
+def fetch_subreddit_posts(subreddit: str, sort: str = "hot", limit: int = settings.POSTS_PER_SUBREDDIT) -> list[dict]:
+    posts = []
+    after = None
+    now = datetime.now(timezone.utc)
 
-        for submission in subreddit.hot(limit=limit):
+    while len(posts) < limit:
+        batch_size = min(100, limit - len(posts))
+        url = settings.REDDIT_BASE_URL.format(subreddit=subreddit, sort=sort)
+        params = {"limit": batch_size, "raw_json": 1}
+        if after:
+            params["after"] = after
+
+        response = requests.get(url, headers=HEADERS, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        children = data.get("data", {}).get("children", [])
+        if not children:
+            break
+
+        for child in children:
+            p = child["data"]
             posts.append(
                 {
-                    "post_id": submission.id,
-                    "subreddit": subreddit_name,
-                    "title": submission.title,
-                    "selftext": submission.selftext or None,
-                    "author": str(submission.author) if submission.author else "[deleted]",
-                    "score": submission.score,
-                    "upvote_ratio": submission.upvote_ratio,
-                    "num_comments": submission.num_comments,
-                    "created_utc": datetime.fromtimestamp(submission.created_utc, tz=timezone.utc),
-                    "url": submission.url,
-                    "permalink": f"https://reddit.com{submission.permalink}",
-                    "is_self": str(submission.is_self),
-                    "link_flair_text": submission.link_flair_text,
-                    "over_18": str(submission.over_18),
-                    "spoiler": str(submission.spoiler),
-                    "awards_received": submission.total_awards_received,
+                    "post_id": p["id"],
+                    "subreddit": subreddit,
+                    "title": p["title"],
+                    "selftext": p.get("selftext") or None,
+                    "author": p.get("author", "[deleted]"),
+                    "score": int(p.get("score", 0)),
+                    "upvote_ratio": float(p.get("upvote_ratio", 0.0)),
+                    "num_comments": int(p.get("num_comments", 0)),
+                    "created_utc": datetime.fromtimestamp(p["created_utc"], tz=timezone.utc),
+                    "url": p.get("url"),
+                    "permalink": f"https://reddit.com{p['permalink']}",
+                    "is_self": str(p.get("is_self", False)),
+                    "link_flair_text": p.get("link_flair_text"),
+                    "over_18": str(p.get("over_18", False)),
+                    "spoiler": str(p.get("spoiler", False)),
+                    "awards_received": int(p.get("total_awards_received", 0)),
                     "ingestion_timestamp": now,
                 }
             )
 
-        return posts
+        after = data["data"].get("after")
+        if not after:
+            break
 
-    def fetch_all_subreddits(self) -> list[dict]:
-        all_posts = []
-        for sub in Settings.SUBREDDITS:
-            print(f"Fetching posts from r/{sub}...")
-            posts = self.fetch_posts(sub)
+        time.sleep(1.5)
+
+    return posts
+
+
+def fetch_all_subreddits() -> list[dict]:
+    all_posts = []
+    for sub in settings.SUBREDDITS:
+        print(f"Fetching r/{sub}...")
+        try:
+            posts = fetch_subreddit_posts(sub)
             all_posts.extend(posts)
-            print(f"  -> {len(posts)} posts fetched")
-        print(f"Total posts fetched: {len(all_posts)}")
-        return all_posts
+            print(f"  -> {len(posts)} posts")
+        except Exception as e:
+            print(f"  -> ERROR: {e}")
+        time.sleep(2)
+    print(f"\nTotal posts fetched: {len(all_posts)}")
+    return all_posts
 
 
-def ingest_to_bronze(spark: SparkSession, posts: list[dict], table_path: str):
+def ingest_to_bronze(spark: SparkSession, posts: list[dict]):
     df = spark.createDataFrame(posts, schema=POST_SCHEMA)
-    df.write.format("delta").mode("append").option("mergeSchema", "true").save(table_path)
+    df.write.format("delta").mode("append").option("mergeSchema", "true").save(settings.BRONZE_PATH)
+    print(f"Wrote {df.count()} rows to {settings.BRONZE_PATH}")
     return df
