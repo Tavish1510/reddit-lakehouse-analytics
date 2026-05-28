@@ -1,9 +1,4 @@
-"""
-Shared Spark session helper with Delta Lake configured.
-
-Includes Windows-specific networking fixes (driver bind address, host)
-so the pipeline runs reliably on Windows, Mac, and Linux.
-"""
+"""Shared SparkSession factory with Delta Lake configured for local runs."""
 
 import os
 import sys
